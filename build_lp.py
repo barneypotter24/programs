@@ -919,6 +919,20 @@ def hypershrub(Hypergraph,outputFile):
     ################################
     # (19)
 
+    for e in Hypergraph.hyperedge_id_iterator():
+        lp_file.write(" 19_"+str(e)+": ")
+        lp_file.write("alpha_"+str(e)+" >= ")
+
+        first = True
+        for v in Hypergraph.get_hyperedge_head(e):
+            if first == True:
+                lp_file.write("pi_"+str(e)+","+str(v))
+                first = False
+            else:
+                lp_file.write(" + pi_"+str(e)+","+str(v))
+
+        lp_file.write("\n")
+
     #########################
     #                       #
     #  Talk to Jim or Anna  #
@@ -929,14 +943,8 @@ def hypershrub(Hypergraph,outputFile):
     # (20)
 
     #
-    # In "rational"
+    # Doesn't require a constraint.
     #
-
-    ##############
-    #            #
-    #  Do This!  #
-    #            #
-    ##############
 
     ################################
     # (21)
@@ -1023,10 +1031,10 @@ def hypershrub(Hypergraph,outputFile):
     ############
 
     # Write which rational variables are being optimized.
-    lp_file.write("Rational\n")
-
-    for b in betas:
-        lp_file.write(" "+str(b)+"\n")
+    # lp_file.write("Rational\n")
+    #
+    # for b in betas:
+    #     lp_file.write(" "+str(b)+"\n")
 
     ################################################################
     # End #
