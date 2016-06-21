@@ -38,8 +38,9 @@ def main(argv):
     # print("Average run time of build_lp_dc:")
     # print(sum(listB)/len(listB))
 
-    build_lp(H,out)
-    build_lp_dc(H,outDC)
+    #build_lp(H,out)
+    #build_lp_dc(H,outDC)
+    hypershrub(H,outHypershrub)
 
 def weightNodes(H,prefix):
 
@@ -106,7 +107,7 @@ def nameToPrize(prefix):
 
     sep = ","
 
-    filename = "outputFiles/"+prefix+"-name2prize.csv"
+    filename = "../datasets/aliases/"+prefix+"-name2prize.csv"
 
     in_file = open(filename, 'r')
 
@@ -142,7 +143,7 @@ def proteinsInComplex(prefix, nodeName):
     sep = "\t"
     delim = ";"
 
-    filename = "../../reactomeData/testOutput/"+prefix+"-complexes.txt"
+    filename = "../datasets/reactome/parsed/"+prefix+"-complexes.txt"
 
     in_file = open(filename, 'r')
 
@@ -174,7 +175,7 @@ def reactomeIdToUniprot(prefix):
 
     D = {}
 
-    filename = "../../reactomeData/testOutput/"+prefix+"-elements.txt"
+    filename = "../datasets/reactome/parsed/"+prefix+"-elements.txt"
 
     sep = "\t"
     delim = ";"
@@ -214,7 +215,7 @@ def uniprotToName(prefix):
 
     sep = "\t"
 
-    filename = "../hypergraphs/"+prefix+"-conversion.txt"
+    filename = "../datasets/aliases/"+prefix+"-conversion.txt"
 
     in_file = open(filename, 'r')
 
@@ -252,7 +253,7 @@ def build_lp(Hypergraph,outputFile):
     # Open a new text file (default 'text.lp').
     # Edit this name to make a new file based on which hypergraph
     # is being used for the example.
-    lp_file = open("outputFiles/"+outputFile, "w")
+    lp_file = open("output/"+outputFile, "w")
 
     # Write the first line of the .lp file.
     # This can be "Maximize\n" or "Minimize\n".
@@ -482,7 +483,7 @@ def build_lp_dc(Hypergraph,outputFile):
     # Open a new text file (default 'text.lp').
     # Edit this name to make a new file based on which hypergraph
     # is being used for the example.
-    lp_file = open("outputFiles/"+outputFile, "w")
+    lp_file = open("output/"+outputFile, "w")
 
     # Write the first line of the .lp file.
     # This can be "Maximize\n" or "Minimize\n".
@@ -706,20 +707,10 @@ def hypershrub(Hypergraph,outputFile):
 
     """
 
-    #D = connectivityFinder(Hypergraph)
-    # print(D)
-
-    #ts = 0
-    #for key in D:
-    #    if D[key] == True:
-    #        ts += 1
-    #print("ts: ",ts)
-
-
     # Open a new text file (default 'text.lp').
     # Edit this name to make a new file based on which hypergraph
     # is being used for the example.
-    lp_file = open("outputFiles/"+outputFile, "w")
+    lp_file = open("output/"+outputFile, "w")
 
     ################################################################
     # Objective Function #
@@ -734,13 +725,9 @@ def hypershrub(Hypergraph,outputFile):
     lp_file.write(" obj: ")
 
     # Create three lists of the variables present in the linear program.
-    xVariables = []
-    # xVarVals = []
-    dVariables = []
-    # dVarVals = []
-    eVariables = []
-    # eVarVals = []
-    # cVariables = []
+    xVariables = [] # \alpha_{nodename}
+    dVariables = [] # \rho_{nodename}
+    eVariables = [] # \alpha_{edgename}
 
     ################################
     # First, write sum_{v \in V}{p_{v}\alpha_{v}}
@@ -762,6 +749,11 @@ def hypershrub(Hypergraph,outputFile):
 
     ################################
     # Next, write sum_{v \in V}{r_{v}\rho_{v}}
+
+    ''' TODO
+        Check if we need zeroes in obj
+    '''
+
     for n in Hypergraph.node_iterator():
         lp_file.write(" - ")
         if str(Hypergraph.get_node_attribute(n,"penalty")) == "inf":
@@ -802,9 +794,9 @@ def hypershrub(Hypergraph,outputFile):
     pis = []
     for n in Hypergraph.node_iterator():
         for e in Hypergraph.get_backward_star(n):
-            lp_file.write(" + 0.0 pi_"+str(e)+","+str(v))
+            lp_file.write(" + 0.0 pi_"+str(e)+"~"+str(v))
 
-            pis.append("pi_"+str(e)+","+str(v))
+            pis.append("pi_"+str(e)+"~"+str(v))
 
     ################################
     # Dummy variable for beta:
@@ -825,12 +817,6 @@ def hypershrub(Hypergraph,outputFile):
     sigmas.sort()
     pis.sort()
     betas.sort()
-    #cVariables.sort()
-    #print("proof that something is happening: ",cVariables)
-
-    # print("xVariables:",xVariables)
-    # print("dVariables:",dVariables)
-    # print("eVariables:",eVariables)
 
     ################################
 
@@ -853,15 +839,17 @@ def hypershrub(Hypergraph,outputFile):
 
         lp_file.write(" 12_"+str(v)+": ")
 
-        lp_file.write(" sigma_"+str(v)+" = ")
+        lp_file.write(" sigma_"+str(v)+" - ")
 
         first = True
         for e in Hypergraph.get_backward_star(v):
             if first == True:
-                lp_file.write("pi_"+str(e)+","+str(v)+"\n")
+                lp_file.write("pi_"+str(e)+"~"+str(v))
                 first = False
             else:
-                lp_file.write(" + pi_"+str(e)+","+str(v)+"\n")
+                lp_file.write(" - pi_"+str(e)+"~"+str(v))
+
+        lp_file.write(" = 0\n")
 
     ################################
     # (13)
@@ -875,69 +863,59 @@ def hypershrub(Hypergraph,outputFile):
 
     for v in Hypergraph.node_iterator():
         lp_file.write(" 14_"+str(v)+": ")
-        lp_file.write("rho_"+str(v)+" <= alpha_"+str(v)+"\n")
+        lp_file.write("rho_"+str(v)+" - alpha_"+str(v)+" <= 0\n")
 
     ################################
     # (15)
 
     for v in Hypergraph.node_iterator():
         lp_file.write(" 15_"+str(v)+": ")
-        lp_file.write("sigma_"+str(v)+" <= 1 - rho_"+str(v)+"\n")
+        lp_file.write("sigma_"+str(v)+"+ rho_"+str(v)+" <= 1\n")
 
     ################################
     # (16)
 
     for v in Hypergraph.node_iterator():
         lp_file.write(" 16_"+str(v)+": ")
-        lp_file.write("sigma_"+str(v)+" <= alpha_"+str(v)+"\n")
+        lp_file.write("sigma_"+str(v)+" - alpha_"+str(v)+" <= 0\n")
 
     ################################
     # (17)
 
     for e in Hypergraph.hyperedge_id_iterator():
         for v in Hypergraph.get_hyperedge_tail(e):
-            lp_file.write(" 17_"+str(e)+","+str(v)+": ")
-            lp_file.write("alpha_"+str(e)+" <= alpha_"+str(v)+"\n")
+            lp_file.write(" 17_"+str(e)+"~"+str(v)+": ")
+            lp_file.write("alpha_"+str(e)+" - alpha_"+str(v)+" <= 0\n")
 
     ################################
     # (18)
 
     for e in Hypergraph.hyperedge_id_iterator():
         lp_file.write(" 18_"+str(e)+": ")
-        lp_file.write("alpha_"+str(e)+" <= ")
+        lp_file.write("alpha_"+str(e)+" - ")
 
         first = True
         for v in Hypergraph.get_hyperedge_head(e):
             if first == True:
-                lp_file.write("pi_"+str(e)+","+str(v))
+                lp_file.write("pi_"+str(e)+"~"+str(v))
                 first = False
             else:
-                lp_file.write(" + pi_"+str(e)+","+str(v))
+                lp_file.write(" - pi_"+str(e)+"~"+str(v))
 
-        lp_file.write("\n")
+        lp_file.write(" <= 0\n")
 
     ################################
     # (19)
 
+    '''
+        Triple check with JF
+    '''
+
     for e in Hypergraph.hyperedge_id_iterator():
-        lp_file.write(" 19_"+str(e)+": ")
-        lp_file.write("alpha_"+str(e)+" >= ")
-
-        first = True
         for v in Hypergraph.get_hyperedge_head(e):
-            if first == True:
-                lp_file.write("pi_"+str(e)+","+str(v))
-                first = False
-            else:
-                lp_file.write(" + pi_"+str(e)+","+str(v))
 
-        lp_file.write("\n")
-
-    #########################
-    #                       #
-    #  Talk to Jim or Anna  #
-    #                       #
-    #########################
+            lp_file.write(" 19_"+str(e)+"~"+str(v)+": ")
+            lp_file.write("alpha_"+str(e)+" - pi_"+str(e)+"~"+str(v)+" >= 0\n")
 
     ################################
     # (20)
@@ -957,12 +935,13 @@ def hypershrub(Hypergraph,outputFile):
     # (22)
 
     epsilon = 1/len(xVariables)
+    eprime = 1 - epsilon
 
     for e in Hypergraph.hyperedge_id_iterator():
         for u in Hypergraph.get_hyperedge_tail(e):
-            for v in Hypergraph.get_hyperedge_tail(e):
-                lp_file.write(" 22_"+str(e)+","+str(u)+","+str(v)+": ")
-                lp_file.write("1 - pi_"+str(e)+","+str(v)+" + beta_"+str(v)+" >= beta_"+str(u)+" + "+str(epsilon)+"\n")
+            for v in Hypergraph.get_hyperedge_head(e):
+                lp_file.write(" 22_"+str(e)+"~"+str(u)+"~"+str(v)+": ")
+                lp_file.write("beta_"+str(u)+" - beta_"+str(v)+" + pi_"+str(e)+"~"+str(v)+" <= "+str(eprime)+"\n")
 
     ################################
 
@@ -981,10 +960,14 @@ def hypershrub(Hypergraph,outputFile):
     # Any node designated as a target is automatically included in the solution
     # Nodes are designated as targets by having their rho value set to inf
 
+    '''
+        Need to do stuff with "infs"
+    '''
+
     for n in Hypergraph.node_iterator():
         if str(Hypergraph.get_node_attribute(n,"penalty")) == "inf":
-            lp_file.write(" "+str(n)+"x = 1\n")
-            lp_file.write(" "+str(n)+"d = 0\n")
+            lp_file.write("alpha_"+str(n)+" = 1\n")
+            lp_file.write("rho_"+str(n)+" = 0\n")
 
     ################################
     # Sigma constraints
