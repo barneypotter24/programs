@@ -10,10 +10,12 @@ def main(argv):
 #    print("...\n...\n...")
 #    print("...\n...\n...")
 #    dc = input("Use the D&C formulation? (y/n) ");
-    nodeFile = "../hypergraphs/"+title+"-nodes.txt"
-    edgeFile = "../hypergraphs/"+title+"-edges.txt"
+    nodeFile = "../datasets/hypergraphs/"+title+"-nodes.txt"
+    edgeFile = "../datasets/hypergraphs/"+title+"-edges.txt"
     out = title+".lp"
     outDC = title+"_DC.lp"
+    outHypershrub = title+"_hypershrub.lp"
+    outHyperedge = title+"_hypershrub_hyperedges.txt"
 
     H = DirectedHypergraph()
 
@@ -22,7 +24,7 @@ def main(argv):
 
     # Read the edge and node files to create a weighted hypergraph.
     H.read(edgeFile, node_delimeter, column_delimeter)
-    H.weight_nodes(nodeFile, node_delimeter, column_delimeter)
+    weight_nodes(H, nodeFile, node_delimeter, column_delimeter)
     weightNodes(H,title)
 
     # A = timeit.Timer(lambda: build_lp(H,out))
@@ -40,7 +42,50 @@ def main(argv):
 
     #build_lp(H,out)
     #build_lp_dc(H,outDC)
-    hypershrub(H,outHypershrub)
+    hypershrub(H,outHypershrub,outHyperedge)
+
+def weight_nodes(Hypergraph, file_name, delim=',', sep='\t'):
+    """Read a file of nodes and their associated prized and
+    penalties.  Addes these two attributes to each node in the hypergraph
+    and adds the node if the node is not already part of the hypergraph.
+
+    Takes a file such as:
+    name;prize;penalty
+    A;7;10
+    B;14;32
+    C;21;1
+
+    To add the weights.
+
+    """
+    in_file = open(file_name, 'r')
+
+    # Skip the header line
+    in_file.readline()
+
+    line_number = 2
+    for line in in_file.readlines():
+        line = line.strip()
+        # Skip empty lines
+        if not line:
+            continue
+
+        words = line.split(sep)
+        if not (len(words) == 3):
+            raise \
+                IOError("Line {} ".format(line_number) +
+                        "of "+file_name+" contains {} ".format(len(words)) +
+                        "columns -- must contain only 3.")
+
+        node_ID = str(words[0])
+
+        node_prize = float(words[1])
+        node_penalty = float(words[2])
+        attributes = {'prize': node_prize, 'penalty': node_penalty,}
+
+        Hypergraph.add_node(node_ID, attributes)
+
+        line_number += 1
 
 def weightNodes(H,prefix):
 
@@ -697,7 +742,7 @@ def build_lp_dc(Hypergraph,outputFile):
     print("Done.")
     lp_file.close()
 
-def hypershrub(Hypergraph,outputFile):
+def hypershrub(Hypergraph,outputFile,hyperedgeFile):
 
     """ Defines a function that will build a .lp file after being Given
     a hypergraph. The hypergraph must be weighted with
@@ -794,9 +839,13 @@ def hypershrub(Hypergraph,outputFile):
     pis = []
     for n in Hypergraph.node_iterator():
         for e in Hypergraph.get_backward_star(n):
-            lp_file.write(" + 0.0 pi_"+str(e)+"~"+str(v))
+            lp_file.write(" + 0.0 pi_"+str(e)+"~"+str(n))
 
-            pis.append("pi_"+str(e)+"~"+str(v))
+            pis.append("pi_"+str(e)+"~"+str(n))
+
+    '''
+        Figure out why pi is always zero.
+    '''
 
     ################################
     # Dummy variable for beta:
@@ -837,17 +886,12 @@ def hypershrub(Hypergraph,outputFile):
 
     for v in Hypergraph.node_iterator():
 
-        lp_file.write(" 12_"+str(v)+": ")
+        lp_file.write(" c12_"+str(v)+": ")
 
-        lp_file.write(" sigma_"+str(v)+" - ")
+        lp_file.write(" sigma_"+str(v)+" ")
 
-        first = True
         for e in Hypergraph.get_backward_star(v):
-            if first == True:
-                lp_file.write("pi_"+str(e)+"~"+str(v))
-                first = False
-            else:
-                lp_file.write(" - pi_"+str(e)+"~"+str(v))
+            lp_file.write(" - pi_"+str(e)+"~"+str(v))
 
         lp_file.write(" = 0\n")
 
@@ -862,21 +906,25 @@ def hypershrub(Hypergraph,outputFile):
     # (14)
 
     for v in Hypergraph.node_iterator():
-        lp_file.write(" 14_"+str(v)+": ")
+        lp_file.write(" c14_"+str(v)+": ")
         lp_file.write("rho_"+str(v)+" - alpha_"+str(v)+" <= 0\n")
 
     ################################
     # (15)
 
+    # for v in Hypergraph.node_iterator():
+    #     lp_file.write(" c15_"+str(v)+": ")
+    #     lp_file.write("sigma_"+str(v)+"+ rho_"+str(v)+" <= 1\n")
+
     for v in Hypergraph.node_iterator():
-        lp_file.write(" 15_"+str(v)+": ")
-        lp_file.write("sigma_"+str(v)+"+ rho_"+str(v)+" <= 1\n")
+        lp_file.write(" c15_5_"+str(v)+": ")
+        lp_file.write("sigma_"+str(v)+" + rho_"+str(v)+" - alpha_"+str(v)+" = 0\n")
 
     ################################
     # (16)
 
     for v in Hypergraph.node_iterator():
-        lp_file.write(" 16_"+str(v)+": ")
+        lp_file.write(" c16_"+str(v)+": ")
         lp_file.write("sigma_"+str(v)+" - alpha_"+str(v)+" <= 0\n")
 
     ################################
@@ -884,14 +932,14 @@ def hypershrub(Hypergraph,outputFile):
 
     for e in Hypergraph.hyperedge_id_iterator():
         for v in Hypergraph.get_hyperedge_tail(e):
-            lp_file.write(" 17_"+str(e)+"~"+str(v)+": ")
+            lp_file.write(" c17_"+str(e)+"~"+str(v)+": ")
             lp_file.write("alpha_"+str(e)+" - alpha_"+str(v)+" <= 0\n")
 
     ################################
     # (18)
 
     for e in Hypergraph.hyperedge_id_iterator():
-        lp_file.write(" 18_"+str(e)+": ")
+        lp_file.write(" c18_"+str(e)+": ")
         lp_file.write("alpha_"+str(e)+" - ")
 
         first = True
@@ -914,7 +962,7 @@ def hypershrub(Hypergraph,outputFile):
     for e in Hypergraph.hyperedge_id_iterator():
         for v in Hypergraph.get_hyperedge_head(e):
 
-            lp_file.write(" 19_"+str(e)+"~"+str(v)+": ")
+            lp_file.write(" c19_"+str(e)+"~"+str(v)+": ")
             lp_file.write("alpha_"+str(e)+" - pi_"+str(e)+"~"+str(v)+" >= 0\n")
 
     ################################
@@ -940,7 +988,7 @@ def hypershrub(Hypergraph,outputFile):
     for e in Hypergraph.hyperedge_id_iterator():
         for u in Hypergraph.get_hyperedge_tail(e):
             for v in Hypergraph.get_hyperedge_head(e):
-                lp_file.write(" 22_"+str(e)+"~"+str(u)+"~"+str(v)+": ")
+                lp_file.write(" c22_"+str(e)+"~"+str(u)+"~"+str(v)+": ")
                 lp_file.write("beta_"+str(u)+" - beta_"+str(v)+" + pi_"+str(e)+"~"+str(v)+" <= "+str(eprime)+"\n")
 
     ################################
@@ -978,7 +1026,7 @@ def hypershrub(Hypergraph,outputFile):
     ################################
     # Beta constraints
 
-    ffor v in Hypergraph.node_iterator():
+    for v in Hypergraph.node_iterator():
         lp_file.write(" 0 <= beta_"+str(v)+" <= 1\n")
 
     #Done writing the bounds.
@@ -1029,6 +1077,47 @@ def hypershrub(Hypergraph,outputFile):
     lp_file.close()
 
     ################################################################
+    ################################################################
+    # Writing Hyperedge File #
+    ##########################
+
+    # Delimiters for columns and nodes:
+    # Defaults are colD = ";" and nodD = ","
+    colD = ";"
+    nodD = ","
+
+    h_file = open("output/"+hyperedgeFile, "w")
+
+    h_file.write("HyperedgeName"+colD+"TailNodes"+colD+"HeadNodes\n")
+
+    for e in Hypergraph.hyperedge_id_iterator():
+
+        h_file.write(str(e))
+
+        h_file.write(colD)
+
+        first = True
+        for v in Hypergraph.get_hyperedge_tail(e):
+            if first == True:
+                h_file.write(str(v))
+                first = False
+            else:
+                h_file.write(nodD+str(v))
+
+        h_file.write(colD)
+
+        first = True
+        for n in Hypergraph.get_hyperedge_head(e):
+            if first == True:
+                h_file.write(str(n))
+                first = False
+            else:
+                h_file.write(nodD+str(n))
+
+        h_file.write("\n")
+
+    h_file.close()
+
 
 if __name__ == "__main__":
     main(sys.argv[1:])
